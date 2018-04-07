@@ -10,11 +10,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 PLOT = True
+# Phi coefficients
+alpha, beta = 1.0, 1.0
 
 class Vertex(object):
     def __init__(self, name='', y=None, neighs=None, in_msgs=None):
         self._name = name
-        self._y = y # original pixel
+        self._y = y # observed pixel
         if(neighs == None): neighs = set() # set of neighbour nodes
         if(in_msgs==None): in_msgs = {} # dictionary mapping neighbours to their messages
         self._neighs = neighs
@@ -25,11 +27,28 @@ class Vertex(object):
         self._neighs.remove(vertex)
     def get_belief(self):
         return
+
+    def calc_update(self, xi, xj, neighs):
+        prod = 1
+        for neigh in neighs:
+            prod *= self._in_msgs[neigh][(xi+1)/2]
+        return np.exp(alpha*self._y*xi) * np.exp(beta*xi*xj) * prod
+
+
     def snd_msg(self,neigh):
         """ Combines messages from all other neighbours
             to propagate a message to the neighbouring Vertex 'neigh'.
         """
-        return
+        other_neighs = self._neighs
+        other_neighs.discard(neigh)
+        plus = max(calc_update(1, 1, other_neighs), calc_update(-1, 1, other_neighs))
+        minus = max(calc_update(1, -1, other_neighs), calc_update(-1, -1, other_neighs))
+
+    def calc_update(self, xi, xj, neighs):
+        prod = 1
+        for neigh in neighs:
+            prod *= self._in_msgs[neigh][(xi+1)/2]
+        return np.exp(alpha*self._y*xi) * np.exp(beta*xi*xj) * prod
 
     def __str__(self):
         ret = "Name: "+self._name
@@ -48,6 +67,7 @@ class Graph(object):
         if graph_dict == None:
             graph_dict = {}
         self._graph_dict = graph_dict
+
     def vertices(self):
         """ returns the vertices of a graph"""
         return list(self._graph_dict.keys())
@@ -130,8 +150,9 @@ def grid2mat(grid,n,m):
     for v in l:
         i = int(v._name[1:])
         row,col = (i//m,i%m)
-        mat[row][col] = 2017 # you should change this of course
+        mat[row][col] = v._y
     return mat
+
 
 def main():
     # begin:
@@ -154,8 +175,19 @@ def main():
     # build grid:
     g = build_grid_graph(n, m, image)
 
+    # initialize in_msgs for each vertex
+    for v in g.vertices():
+        for neighbour in v._neighs:
+            v._in_msgs[neighbour] = (1,1)
+
     # process grid:
-    # here you should do stuff to recover the image...
+    converging = True
+    while converging:
+        for i in range(n*m):
+            for v in g.vertices()[i]:
+                neighbours = g._graph_dict[i]
+
+
    
     # convert grid to image: 
     infered_img = grid2mat(g, n, m)
