@@ -11,7 +11,8 @@ import numpy as np
 
 PLOT = True
 # Phi coefficients
-alpha, beta = 1.0, 1.0
+alpha, beta = 3.0, 1.0
+num_iter = 1000
 thresh = 0.95
 
 class Vertex(object):
@@ -22,6 +23,7 @@ class Vertex(object):
         if(in_msgs==None): in_msgs = {} # dictionary mapping neighbours to their messages
         self._neighs = neighs
         self._in_msgs = in_msgs
+        self._belief = y
 
     def add_neigh(self,vertex):
         self._neighs.add(vertex)
@@ -29,25 +31,45 @@ class Vertex(object):
     def rem_neigh(self,vertex):
         self._neighs.remove(vertex)
 
-    def get_belief(self):
-        return
-
-    def calc_update(self, xi, xj, neighs):
+    def msg_update(self, xi, xj, neighs):
         prod = 1
         for neigh in neighs:
             prod *= self._in_msgs[neigh][(xi+1)/2]
         return np.exp(alpha*self._y*xi) * np.exp(beta*xi*xj) * prod
 
-    def snd_msg(self,neigh):
+    def send_msg(self,neigh):
         """ Combines messages from all other neighbours
             to propagate a message to the neighbouring Vertex 'neigh'.
         """
-        # TODO: remember to normalize the msgs as instructed in equation 5 from the HW
+        # find all neighbours that are not the neighbour the message is sent to
         other_neighs = self._neighs
         other_neighs.discard(neigh)
-        plus = max(self.calc_update(1, 1, other_neighs), self.calc_update(-1, 1, other_neighs))
-        minus = max(self.calc_update(1, -1, other_neighs), self.calc_update(-1, -1, other_neighs))
+
+        # plus is for xj = 1, minus is for xj = -1
+        plus = max(self.msg_update(1, 1, other_neighs), self.msg_update(-1, 1, other_neighs))
+        minus = max(self.msg_update(1, -1, other_neighs), self.msg_update(-1, -1, other_neighs))
+
+        # normalize
+        plus = plus / (plus + minus)
+        minus = minus / (plus + minus)
         return minus, plus
+
+    def calc_argmax(self):
+        prod_plus, prod_minus = 1, 1
+        for neigh in self._neighs:
+            prod_minus *= self._in_msgs[neigh][0]
+            prod_plus *= self._in_msgs[neigh][1]
+        minus = np.exp(alpha * self._y * (-1)) * prod_minus
+        plus = np.exp(alpha * self._y * 1) * prod_plus
+        return minus, plus
+
+    def update_belief(self):
+        minus, plus = self.calc_argmax()
+        if minus > plus:
+            self._belief = -1
+        else:
+            self._belief = 1
+        return
 
     def __str__(self):
         ret = "Name: "+self._name
@@ -149,7 +171,7 @@ def grid2mat(grid,n,m):
     for v in l:
         i = int(v._name[1:])
         row,col = (i//m,i%m)
-        mat[row][col] = v._y
+        mat[row][col] = v._belief
     return mat
 
 
@@ -180,23 +202,27 @@ def main():
             v._in_msgs[neighbour] = (1, 1)
 
     # process grid:
-    old_msgs = np.zeros(len(g.vertices))
+    old_msgs = np.zeros(len(g.vertices()))
     converging = True
     ind = 0
-    while converging:
+    # while converging:
+    for i in range(num_iter):
         # each vertex sends update msgs to its neighbours
         for v in g.vertices():
             neighbours = g._graph_dict[v]
             for neighbour in neighbours:
                 minus, plus = v.send_msg(neighbour)
-                if neighbour._in_msg[v] == (minus, plus):
-                    old_msgs[ind] = 1 # TODO: better convergence criteria
-                neighbour._in_msg[v] = (minus, plus)
+                # if neighbour._in_msg[v] == (minus, plus):
+                #     old_msgs[ind] = 1 # TODO: better convergence criteria
+                neighbour._in_msgs[v] = (minus, plus)
             ind += 1
+        # each vertex updates its own belief
+        for v in g.vertices():
+            v.update_belief()
 
 
 
-                # convert grid to image:
+    # convert grid to image:
     infered_img = grid2mat(g, n, m)
     if PLOT:
         plt.imshow(infered_img)
