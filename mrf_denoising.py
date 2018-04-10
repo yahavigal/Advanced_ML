@@ -11,9 +11,7 @@ import numpy as np
 
 PLOT = True
 # Phi coefficients
-alpha, beta = 3.0, 1.0
-num_iter = 1000
-thresh = 0.95
+alpha, beta = 1.0, 1.0
 
 class Vertex(object):
     def __init__(self, name='', y=None, neighs=None, in_msgs=None):
@@ -32,10 +30,10 @@ class Vertex(object):
         self._neighs.remove(vertex)
 
     def msg_update(self, xi, xj, neighs):
-        prod = 1
+        prod = 1.0
         for neigh in neighs:
             prod *= self._in_msgs[neigh][(xi+1)/2]
-        return np.exp(alpha*self._y*xi) * np.exp(beta*xi*xj) * prod
+        return np.exp(alpha*self._belief*xi) * np.exp(beta*xi*xj) * prod
 
     def send_msg(self,neigh):
         """ Combines messages from all other neighbours
@@ -55,20 +53,20 @@ class Vertex(object):
         return minus, plus
 
     def calc_argmax(self):
-        prod_plus, prod_minus = 1, 1
+        prod_plus, prod_minus = 1.0, 1.0
         for neigh in self._neighs:
             prod_minus *= self._in_msgs[neigh][0]
             prod_plus *= self._in_msgs[neigh][1]
-        minus = np.exp(alpha * self._y * (-1)) * prod_minus
-        plus = np.exp(alpha * self._y * 1) * prod_plus
+        minus = np.exp(alpha * self._y * (-1.0)) * prod_minus
+        plus = np.exp(alpha * self._y * 1.0) * prod_plus
         return minus, plus
 
     def update_belief(self):
         minus, plus = self.calc_argmax()
         if minus > plus:
-            self._belief = -1
+            self._belief = -1.0
         else:
-            self._belief = 1
+            self._belief = 1.0
         return
 
     def __str__(self):
@@ -202,20 +200,27 @@ def main():
             v._in_msgs[neighbour] = (1, 1)
 
     # process grid:
-    old_msgs = np.zeros(len(g.vertices()))
     converging = True
-    ind = 0
-    # while converging:
-    for i in range(num_iter):
+    itr, rounds = 0,0
+    while converging:
+        old_msgs = np.zeros(len(g.vertices()))
         # each vertex sends update msgs to its neighbours
         for v in g.vertices():
+            ind = g.vertices().index(v)
             neighbours = g._graph_dict[v]
             for neighbour in neighbours:
                 minus, plus = v.send_msg(neighbour)
-                # if neighbour._in_msg[v] == (minus, plus):
-                #     old_msgs[ind] = 1 # TODO: better convergence criteria
+                old_m, old_p = neighbour._in_msgs[v]
+                if old_m != minus or old_p != plus:
+                    old_msgs[ind] = 1
+                    rounds = 0
                 neighbour._in_msgs[v] = (minus, plus)
-            ind += 1
+        itr += 1
+        print('iteration #' + str(itr))
+        if np.all(old_msgs == np.zeros(len(g.vertices()))):
+            rounds += 1
+        if rounds > 20:
+            converging = False
         # each vertex updates its own belief
         for v in g.vertices():
             v.update_belief()
