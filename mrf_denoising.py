@@ -11,7 +11,7 @@ import numpy as np
 
 PLOT = True
 # Phi coefficients
-alpha, beta = 1.0, 1.0
+alpha, beta = 1.4, 1.0
 
 class Vertex(object):
     def __init__(self, name='', y=None, neighs=None, in_msgs=None):
@@ -33,7 +33,7 @@ class Vertex(object):
         prod = 1.0
         for neigh in neighs:
             prod *= self._in_msgs[neigh][(xi+1)/2]
-        return np.exp(alpha*self._belief*xi) * np.exp(beta*xi*xj) * prod
+        return np.exp(alpha*self._y*xi) * np.exp(beta*xi*xj) * prod
 
     def send_msg(self,neigh):
         """ Combines messages from all other neighbours
@@ -48,8 +48,9 @@ class Vertex(object):
         minus = max(self.msg_update(1, -1, other_neighs), self.msg_update(-1, -1, other_neighs))
 
         # normalize
+        tmp = plus
         plus = plus / (plus + minus)
-        minus = minus / (plus + minus)
+        minus = minus / (tmp + minus)
         return minus, plus
 
     def calc_argmax(self):
@@ -63,10 +64,10 @@ class Vertex(object):
 
     def update_belief(self):
         minus, plus = self.calc_argmax()
-        if minus > plus:
-            self._belief = -1.0
+        if minus >= plus:
+            self._belief = -1
         else:
-            self._belief = 1.0
+            self._belief = 1
         return
 
     def __str__(self):
@@ -219,14 +220,12 @@ def main():
         print('iteration #' + str(itr))
         if np.all(old_msgs == np.zeros(len(g.vertices()))):
             rounds += 1
-        if rounds > 20:
+        if rounds > 5:
             converging = False
-        # each vertex updates its own belief
-        for v in g.vertices():
-            v.update_belief()
 
-
-
+    # each vertex updates its own belief
+    for v in g.vertices():
+        v.update_belief()
     # convert grid to image:
     infered_img = grid2mat(g, n, m)
     if PLOT:
