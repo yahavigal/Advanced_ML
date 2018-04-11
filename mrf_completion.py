@@ -6,70 +6,38 @@ Created on Thu Mar 30 14:35:26 2017
 """
 import sys
 from scipy import misc
-import matplotlib.pyplot as plt
 import numpy as np
 
-PLOT = True
-# Phi coefficients
-alpha, beta = 1.45, 2.0
-
 class Vertex(object):
-    def __init__(self, name='', y=None, neighs=None, in_msgs=None):
+    def __init__(self,name='',y=None,neighs=None,in_msgs = None,observed=True):
         self._name = name
-        self._y = y # observed pixel
+        self._y = y # original pixel
         if(neighs == None): neighs = set() # set of neighbour nodes
         if(in_msgs==None): in_msgs = {} # dictionary mapping neighbours to their messages
         self._neighs = neighs
         self._in_msgs = in_msgs
-        self._belief = y
-
+        self._observed = observed
     def add_neigh(self,vertex):
         self._neighs.add(vertex)
-
     def rem_neigh(self,vertex):
         self._neighs.remove(vertex)
-
-    def msg_update(self, xi, xj, neighs):
-        prod = 1.0
-        for neigh in neighs:
-            prod *= self._in_msgs[neigh][(xi+1)/2]
-        return np.exp(alpha*self._y*xi) * np.exp(beta*xi*xj) * prod
-
-    def send_msg(self,neigh):
+        
+    def get_belief(self):
+        belief = np.full(256,1)
+        for n in self._neighs:
+            belief = np.multiply(belief , self._in_msgs[n])
+        return belief
+        
+    def snd_msg(self,neigh):
         """ Combines messages from all other neighbours
             to propagate a message to the neighbouring Vertex 'neigh'.
         """
-        # find all neighbours that are not the neighbour the message is sent to
-        other_neighs = self._neighs
-        other_neighs.discard(neigh)
-
-        # plus is for xj = 1, minus is for xj = -1
-        plus = max(self.msg_update(1, 1, other_neighs), self.msg_update(-1, 1, other_neighs))
-        minus = max(self.msg_update(1, -1, other_neighs), self.msg_update(-1, -1, other_neighs))
-
-        # normalize
-        tmp = plus
-        plus = plus / (plus + minus)
-        minus = minus / (tmp + minus)
-        return minus, plus
-
-    def calc_argmax(self):
-        prod_plus, prod_minus = 1.0, 1.0
-        for neigh in self._neighs:
-            prod_minus *= self._in_msgs[neigh][0]
-            prod_plus *= self._in_msgs[neigh][1]
-        minus = np.exp(alpha * self._y * (-1.0)) * prod_minus
-        plus = np.exp(alpha * self._y * 1.0) * prod_plus
-        return minus, plus
-
-    def update_belief(self):
-        minus, plus = self.calc_argmax()
-        if minus >= plus:
-            self._belief = -1
-        else:
-            self._belief = 1
-        return
-
+        belief = np.full(256,1)
+        for n in self._in_msgs:
+            if(neigh != n ):
+                belief = np.multiply(belief, self._in_msgs[n])
+        return belief
+        
     def __str__(self):
         ret = "Name: "+self._name
         ret += "\nNeighbours:"
@@ -87,7 +55,6 @@ class Graph(object):
         if graph_dict == None:
             graph_dict = {}
         self._graph_dict = graph_dict
-
     def vertices(self):
         """ returns the vertices of a graph"""
         return list(self._graph_dict.keys())
@@ -136,6 +103,17 @@ class Graph(object):
             res+= str(edge) + " "
         return res
 
+def is_observed(row,col): #helper function for deciding which pixels are observed  
+    """
+    Returns True/False by whether pixel at (row,col) was observed or not
+    """
+    x1,x2,y1,y2 = 1,15,1,81 # unobserved rectangle borders for 'pinguin-img.png' 
+    def in_rect(row,col,x1,x2,y1,y2): 
+        if(row<x1 or row>x2): return False
+        if(col<y1 or col>y2): return False
+        return True
+    return not(in_rect(row,col,x1,x2,y1,y2))
+
 def build_grid_graph(n,m,img_mat):
     """ Builds an nxm grid graph, with vertex values corresponding to pixel intensities.
     n: num of rows
@@ -149,7 +127,7 @@ def build_grid_graph(n,m,img_mat):
     # add vertices:
     for i in range(n*m):
         row,col = (i//m,i%m)
-        v = Vertex(name="v"+str(i), y=img_mat[row][col])
+        v = Vertex(name="v"+str(i),y=img_mat[row][col],observed = is_observed(row,col))
         g.add_vertex(v)
         if((i%m)!=0): # has left edge
             g.add_edge((v,V[i-1]))
@@ -157,7 +135,6 @@ def build_grid_graph(n,m,img_mat):
             g.add_edge((v,V[i-m]))
         V += [v]
     return g
-    
 def grid2mat(grid,n,m):
     """ convertes grid graph to a np.ndarray
     n: num of rows
@@ -170,73 +147,80 @@ def grid2mat(grid,n,m):
     for v in l:
         i = int(v._name[1:])
         row,col = (i//m,i%m)
-        mat[row][col] = v._belief
+        mat[row][col] = v._y # you should change this of course
     return mat
 
+def calc_log_fi(x_i , x_j , Vmax = 50):
+    p = np.minimum(np.abs(x_i - x_j) , Vmax)
+    return (-1.0 * p)
+    
+def init_messages(v):
+    for n in v._neighs:
+        if(n._observed):# messages are the fi values for all grey levels
+            v._in_msgs[n] = calc_log_fi(np.arange(256) , n._y)
+        else:#messages are initialized to one
+            v._in_msgs[n] = np.full(256,1)
+    return
+    
+def calc_Mij(e , x_j):
+    FI_ij = calc_log_fi(np.arange(256),x_j)
+    Mij = np.max(np.multiply( FI_ij , e[0].snd_msg(e[1])))
+    return Mij
+    
+def update_messages(v):
+     for n in v._neighs:
+        if(not(n._observed)):
+            v._in_msgs[n] = np.array([calc_Mij( (n,v) , i) for i in range(256)])
+            v._in_msgs[n] = np.log(v._in_msgs[n])#use log for numerical stability
+            sum_of_msgs = np.sum(v._in_msgs[n])
+            v._in_msgs[n] = np.divide(v._in_msgs[n],sum_of_msgs)
+     return
+"""
+# begin:
+if len(sys.argv)<2: 
+    print 'Please specify output filename'
+    exit(0)
+"""
+# load image:
+img_path = 'penguin-img.png'
+image = misc.imread(img_path)
 
-def main():
-    # begin:
-    if len(sys.argv) < 3:
-        print 'Please specify input and output file names.'
-        exit(0)
-    # load image:
-    in_file_name = sys.argv[1]
-    image = misc.imread(in_file_name + '.png')
-    n, m = image.shape
+x1,x2,y1,y2 = 92,106,13,93 # unobserved rectangle borders for 'pinguin-img.png' 
+image_segment = image[x1 - 1 : x2 + 2, y1 - 1 : y2 + 2] # here a segment of the original image should be taken
+n,m = image_segment.shape
+# build grid:
+g = build_grid_graph(n,m,image_segment)
 
-    # binarize the image.
-    image = image.astype(np.float32)
-    image[image<128] = -1.
-    image[image>127] = 1.
-    if PLOT:
-        plt.imshow(image)
-        plt.show()
+# process grid:
+#set messages for all observed pixels
+print n
+print m
+print len(g.vertices())
 
-    # build grid:
-    g = build_grid_graph(n, m, image)
+for v in g.vertices():
+    if (not (v._observed)):
+        init_messages(v)
+print ("done with init")
 
-    # initialize in_msgs for each vertex
+for t in range(50):#stop without converging
+    if (t%2 == 0):
+        print t
     for v in g.vertices():
-        for neighbour in v._neighs:
-            v._in_msgs[neighbour] = (1, 1)
+        if (not (v._observed)):
+            update_messages(v)
+            
+for v in g.vertices():
+    if (not (v._observed)):
+        v._y = np.argmax(v.get_belief)
 
-    # process grid:
-    converging = True
-    itr, rounds = 0,0
-    while converging:
-        old_msgs = np.zeros(len(g.vertices()))
-        # each vertex sends update msgs to its neighbours
-        for v in g.vertices():
-            ind = g.vertices().index(v)
-            neighbours = g._graph_dict[v]
-            for neighbour in neighbours:
-                minus, plus = v.send_msg(neighbour)
-                old_m, old_p = neighbour._in_msgs[v]
-                if old_m != minus or old_p != plus:
-                    old_msgs[ind] = 1
-                    rounds = 0
-                neighbour._in_msgs[v] = (minus, plus)
-        itr += 1
-        print('iteration #' + str(itr))
-        if np.all(old_msgs == np.zeros(len(g.vertices()))):
-            rounds += 1
-        else:
-            rounds -= 1
-        if rounds > 5:
-            converging = False
+                    
+    
 
-    # each vertex updates its own belief
-    for v in g.vertices():
-        v.update_belief()
-    # convert grid to image:
-    infered_img = grid2mat(g, n, m)
-    if PLOT:
-        plt.imshow(infered_img)
-        plt.show()
-
-    # save result to output file
-    out_file_name = sys.argv[2]
-    misc.toimage(infered_img).save(out_file_name + '.png')
-
-if __name__ == "__main__":
-    main()
+# convert grid to image: 
+infered_img = grid2mat(g,n,m)
+image_final = image # plug the inferred values back to the original image
+image_final[x1 - 1 : x2 + 2, y1 - 1 : y2 + 2] = infered_img
+# save result to output file
+#outfile_name = sys.argv[1]
+outfile_name = 'out'
+misc.toimage(image_final).save(outfile_name+'.png')
