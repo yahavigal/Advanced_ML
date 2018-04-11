@@ -11,7 +11,7 @@ import numpy as np
 
 PLOT = True
 # Phi coefficients
-alpha, beta = 1.4, 1.0
+alpha, beta = 1.45, 1.0
 
 class Vertex(object):
     def __init__(self, name='', y=None, neighs=None, in_msgs=None):
