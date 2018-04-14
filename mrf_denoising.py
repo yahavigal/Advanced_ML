@@ -9,7 +9,7 @@ from scipy import misc
 import matplotlib.pyplot as plt
 import numpy as np
 
-PLOT = True
+PLOT = False
 # Phi coefficients
 alpha = 1.4
 beta = 0.8
@@ -17,9 +17,18 @@ beta = 0.8
 class Vertex(object):
     def __init__(self, name='', y=None, neighs=None, in_msgs=None):
         self._name = name
-        self._y = y # observed pixel
-        if(neighs == None): neighs = set() # set of neighbour nodes
-        if(in_msgs==None): in_msgs = {} # dictionary mapping neighbours to their messages
+
+        # y is the observed pixel
+        self._y = y
+
+        # set of neighbour nodes
+        if(neighs == None): neighs = set()
+
+        # dictionary mapping neighbours to their messages. For each neighbour (key in the dict)
+        # the value is a tuple of message for Xj = -1 and  message for Xj = 1
+        if(in_msgs==None): in_msgs = {}
+
+        # initialization
         self._neighs = neighs
         self._in_msgs = in_msgs
 
@@ -191,18 +200,25 @@ def main():
     # process grid:
     converging = True
     vs = g.vertices()
+    # while messages still change between iterations
     while converging:
+
+        # save the image before the update so it can be compared later to the new image
         infered_img_pre = grid2mat(g, n, m)
+
         # each vertex sends update msgs to its neighbours
         for v in vs:
             for neigh in v._neighs:
                 minus, plus = v.send_msg(neigh)
                 neigh._in_msgs[v] = (minus, plus)
-        # check the difference between the images before and after the update:
+
+        # compare the images before and after the update:
         infered_img_post = grid2mat(g, n, m)
         diff = infered_img_pre - infered_img_post
         twos_p = sum(sum(diff == 2.0))
         twos_n = sum(sum(diff == -2.0))
+
+        # if the number of different pixels in both images equals to zero the process converged
         twos = twos_p + twos_n
         if twos == 0:
             converging = False
