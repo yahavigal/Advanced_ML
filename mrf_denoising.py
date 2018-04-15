@@ -39,7 +39,7 @@ class Vertex(object):
         self._neighs.remove(vertex)
 
     def msg_update(self, xi, xj, neighs):
-        prod = np.prod([self._in_msgs[neigh][(xi+1)/2] for neigh in neighs])
+        prod = np.prod([self._in_msgs[neigh][int((xi+1)/2)] for neigh in neighs])
         return np.exp(alpha*self._y*xi) * np.exp(beta*xi*xj) * prod
 
     def send_msg(self,neigh):
@@ -174,7 +174,7 @@ def grid2mat(grid,n,m):
 def main():
     # begin:
     if len(sys.argv) < 3:
-        print 'Please specify input and output file names.'
+        print('Please specify input and output file names.')
         exit(0)
     # load image:
     in_file_name = sys.argv[1]
