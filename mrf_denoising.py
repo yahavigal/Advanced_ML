@@ -178,7 +178,7 @@ def main():
         exit(0)
     # load image:
     in_file_name = sys.argv[1]
-    image = misc.imread(in_file_name + '.png')
+    image = misc.imread(in_file_name)
     n, m = image.shape
 
     # binarize the image.
@@ -229,7 +229,7 @@ def main():
 
     # save result to output file
     out_file_name = sys.argv[2]
-    misc.toimage(infered_img_post).save(out_file_name + '.png')
+    misc.toimage(infered_img_post).save(out_file_name)
 
 if __name__ == "__main__":
     main()
